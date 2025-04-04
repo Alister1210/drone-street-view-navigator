@@ -1,10 +1,9 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { MapHistory } from './MapHistory';
 import { BatteryStatus } from './BatteryStatus';
 import { WeatherDisplay } from './WeatherDisplay';
 import { fetchWeatherData, WeatherData } from '@/services/weatherService';
-import { Map, Battery, History, Cloud } from 'lucide-react';
+import { Map, Battery, History, Cloud, Navigation } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 declare global {
@@ -22,6 +21,7 @@ interface Location {
 
 const DroneMap: React.FC = () => {
   const mapRef = useRef<HTMLDivElement>(null);
+  const miniMapRef = useRef<HTMLDivElement>(null);
   const [streetView, setStreetView] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
@@ -33,6 +33,7 @@ const DroneMap: React.FC = () => {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
   const [mapInstance, setMapInstance] = useState<any>(null);
+  const [miniMapInstance, setMiniMapInstance] = useState<any>(null);
   
   const locationHistory: Location[] = [
     { lat: 19.243411, lng: 72.855394, label: 'Location 1' },
@@ -41,15 +42,12 @@ const DroneMap: React.FC = () => {
   ];
 
   useEffect(() => {
-    // Load Google Maps API
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyAv6YoMixZ-POcCbHx4Af0wvcBcMeZJTFo&callback=initializeMap`;
     script.async = true;
     
-    // Define the callback function globally
     window.initializeMap = () => {
       if (mapRef.current) {
-        // Initialize the map
         const mapElement = document.createElement('div');
         mapElement.style.width = '100%';
         mapElement.style.height = '300px';
@@ -68,7 +66,6 @@ const DroneMap: React.FC = () => {
           ]
         });
         
-        // Add marker for drone location
         const marker = new window.google.maps.Marker({
           position: currentLocation,
           map: map,
@@ -85,7 +82,6 @@ const DroneMap: React.FC = () => {
         
         setMapInstance(map);
         
-        // Initialize Street View
         const svService = new window.google.maps.StreetViewService();
         const panorama = new window.google.maps.StreetViewPanorama(
           mapRef.current,
@@ -104,18 +100,49 @@ const DroneMap: React.FC = () => {
         
         setStreetView(panorama);
         
-        // Link the map and street view
         map.setStreetView(panorama);
         
-        // Simulate battery drain
+        if (miniMapRef.current) {
+          const miniMap = new window.google.maps.Map(miniMapRef.current, {
+            center: currentLocation,
+            zoom: 16,
+            mapTypeId: 'roadmap',
+            mapTypeControl: false,
+            zoomControl: true,
+            streetViewControl: false,
+            fullscreenControl: false,
+            styles: [
+              { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+              { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+              { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+            ]
+          });
+          
+          const miniMapMarker = new window.google.maps.Marker({
+            position: currentLocation,
+            map: miniMap,
+            icon: {
+              path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+              scale: 6,
+              fillColor: '#64DFDF',
+              fillOpacity: 1,
+              strokeColor: '#FFFFFF',
+              strokeWeight: 2,
+              rotation: 0
+            },
+            title: 'Drone Location'
+          });
+          
+          setMiniMapInstance(miniMap);
+        }
+        
         const batteryInterval = setInterval(() => {
           setBattery(prev => {
             const newLevel = prev - 1;
             return newLevel > 0 ? newLevel : 0;
           });
-        }, 60000); // Update every minute
+        }, 60000);
         
-        // Fetch weather data for current location
         loadWeatherData(currentLocation.lat, currentLocation.lng);
         
         return () => {
@@ -130,7 +157,6 @@ const DroneMap: React.FC = () => {
       if (document.body.contains(script)) {
         document.body.removeChild(script);
       }
-      // Cleanup the global callback
       delete window.initializeMap;
     };
   }, []);
@@ -150,19 +176,24 @@ const DroneMap: React.FC = () => {
       streetView.setPosition({ lat: location.lat, lng: location.lng });
       setCurrentLocation(location);
       
-      // Update map marker position
       if (mapInstance) {
         mapInstance.setCenter(location);
       }
       
-      // Refresh weather data for the new location
+      if (miniMapInstance) {
+        miniMapInstance.setCenter(location);
+        
+        miniMapInstance.markers?.forEach((marker: any) => {
+          marker.setPosition(location);
+        });
+      }
+      
       loadWeatherData(location.lat, location.lng);
     }
   };
 
   return (
     <div className="h-screen w-full overflow-hidden bg-drone-dark text-white relative">
-      {/* Header */}
       <header className="absolute top-0 left-0 right-0 z-10 bg-drone-dark/80 backdrop-blur-md border-b border-white/10 flex items-center justify-between h-16 px-4">
         <div className="flex items-center gap-2">
           <Map className="text-drone-accent h-6 w-6" />
@@ -185,10 +216,16 @@ const DroneMap: React.FC = () => {
         </div>
       </header>
       
-      {/* Map Container */}
       <div ref={mapRef} className="w-full h-full"></div>
       
-      {/* Sidebar */}
+      <div className="absolute bottom-4 left-4 w-64 h-64 rounded-lg overflow-hidden border border-white/20 shadow-lg z-20">
+        <div ref={miniMapRef} className="w-full h-full"></div>
+        <div className="absolute top-2 left-2 bg-drone-dark/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
+          <Navigation className="h-3 w-3 text-drone-accent" />
+          <span>Google Maps View</span>
+        </div>
+      </div>
+      
       <div className={cn(
         "fixed top-16 right-0 w-80 h-[calc(100vh-4rem)] bg-drone-dark/90 backdrop-blur-md transition-transform duration-300 border-l border-white/10 z-20 overflow-auto",
         sidebarOpen ? "translate-x-0" : "translate-x-full"
@@ -223,7 +260,6 @@ const DroneMap: React.FC = () => {
         </div>
       </div>
       
-      {/* Mobile History Drawer */}
       <div className={cn(
         "fixed bottom-0 left-0 right-0 bg-drone-dark/90 backdrop-blur-md border-t border-white/10 transition-all duration-300 z-30",
         showHistory ? "h-80" : "h-0 overflow-hidden"
