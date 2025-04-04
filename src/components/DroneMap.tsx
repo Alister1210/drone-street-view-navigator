@@ -36,7 +36,7 @@ const DroneMap: React.FC = () => {
   
   const locationHistory: Location[] = [
     { lat: 19.243411, lng: 72.855394, label: 'Location 1' },
-    { lat: 19.285472, lng: 72.863944, label: 'Location 2' },
+    { lat: 19.243385, lng: 72.856292, label: "Location 2" },
     { lat: 19.243386, lng: 72.856141, label: 'Location 3' }
   ];
 
