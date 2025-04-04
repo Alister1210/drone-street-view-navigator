@@ -2,12 +2,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MapHistory } from './MapHistory';
 import { BatteryStatus } from './BatteryStatus';
-import { Map, Battery, History } from 'lucide-react';
+import { WeatherDisplay } from './WeatherDisplay';
+import { fetchWeatherData, WeatherData } from '@/services/weatherService';
+import { Map, Battery, History, Cloud } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 declare global {
   interface Window {
     google: any;
+    initializeMap: () => void;
   }
 }
 
@@ -27,6 +30,9 @@ const DroneMap: React.FC = () => {
     lat: 19.243386, 
     lng: 72.856141
   });
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [isLoadingWeather, setIsLoadingWeather] = useState(false);
+  const [mapInstance, setMapInstance] = useState<any>(null);
   
   const locationHistory: Location[] = [
     { lat: 19.243411, lng: 72.855394, label: 'Location 1' },
@@ -39,11 +45,47 @@ const DroneMap: React.FC = () => {
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyAv6YoMixZ-POcCbHx4Af0wvcBcMeZJTFo&callback=initializeMap`;
     script.async = true;
-    document.body.appendChild(script);
-
-    // Define the callback function
+    
+    // Define the callback function globally
     window.initializeMap = () => {
       if (mapRef.current) {
+        // Initialize the map
+        const mapElement = document.createElement('div');
+        mapElement.style.width = '100%';
+        mapElement.style.height = '300px';
+        mapElement.style.marginBottom = '10px';
+        mapRef.current.appendChild(mapElement);
+        
+        const map = new window.google.maps.Map(mapElement, {
+          center: currentLocation,
+          zoom: 14,
+          mapTypeId: 'hybrid',
+          mapTypeControl: false,
+          styles: [
+            { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+            { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+            { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+          ]
+        });
+        
+        // Add marker for drone location
+        const marker = new window.google.maps.Marker({
+          position: currentLocation,
+          map: map,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: '#64DFDF',
+            fillOpacity: 1,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 2,
+          },
+          title: 'Drone Location'
+        });
+        
+        setMapInstance(map);
+        
+        // Initialize Street View
         const svService = new window.google.maps.StreetViewService();
         const panorama = new window.google.maps.StreetViewPanorama(
           mapRef.current,
@@ -62,6 +104,9 @@ const DroneMap: React.FC = () => {
         
         setStreetView(panorama);
         
+        // Link the map and street view
+        map.setStreetView(panorama);
+        
         // Simulate battery drain
         const batteryInterval = setInterval(() => {
           setBattery(prev => {
@@ -70,19 +115,48 @@ const DroneMap: React.FC = () => {
           });
         }, 60000); // Update every minute
         
+        // Fetch weather data for current location
+        loadWeatherData(currentLocation.lat, currentLocation.lng);
+        
         return () => {
           clearInterval(batteryInterval);
-          document.body.removeChild(script);
-          delete window.initializeMap;
         };
       }
     };
+    
+    document.body.appendChild(script);
+    
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+      // Cleanup the global callback
+      delete window.initializeMap;
+    };
   }, []);
+
+  const loadWeatherData = async (lat: number, lng: number) => {
+    setIsLoadingWeather(true);
+    try {
+      const data = await fetchWeatherData(lat, lng);
+      setWeatherData(data);
+    } finally {
+      setIsLoadingWeather(false);
+    }
+  };
 
   const goToLocation = (location: Location) => {
     if (streetView) {
       streetView.setPosition({ lat: location.lat, lng: location.lng });
       setCurrentLocation(location);
+      
+      // Update map marker position
+      if (mapInstance) {
+        mapInstance.setCenter(location);
+      }
+      
+      // Refresh weather data for the new location
+      loadWeatherData(location.lat, location.lng);
     }
   };
 
@@ -128,6 +202,17 @@ const DroneMap: React.FC = () => {
               <div className="mb-1 text-gray-400">Longitude</div>
               <div className="font-mono">{currentLocation.lng.toFixed(6)}°E</div>
             </div>
+          </div>
+          
+          <h2 className="text-lg font-bold mb-4 text-drone-light flex items-center gap-2">
+            <Cloud className="h-5 w-5 text-drone-accent" />
+            Weather Information
+          </h2>
+          <div className="mb-6">
+            <WeatherDisplay 
+              weatherData={weatherData} 
+              isLoading={isLoadingWeather} 
+            />
           </div>
           
           <MapHistory 
